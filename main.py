@@ -29,6 +29,40 @@ X_BROKER_API_MAJOR_VERSION = 2
 X_BROKER_API_MINOR_VERSION = 10
 X_BROKER_API_VERSION_NAME = 'X-Broker-Api-Version'
 
+def check_auth(username, password):
+    """This function is called to check if a username /
+    password combination is valid.
+    """
+    if not (username == 'alex' and password == 'bigsecret'):
+        log.warning('Authentication failed')
+    return username == 'alex' and password == 'bigsecret'
+
+
+def authenticate():
+    """Sends a 401 response that enables basic auth"""
+    return Response('Could not verify your access level for that URL.\n'
+                    'You have to login with proper credentials', 401,
+                    {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
+
+def requires_auth(f):
+    """Cloud Controller (final release v145+) authenticates with the Broker
+    using HTTP basic authentication (the Authorization: header) on every
+    request and will reject any broker registrations that do not contain a
+    username and password. The broker is responsible for checking the username
+    and password and returning a 401 Unauthorized message if credentials are
+    invalid.
+    Cloud Controller supports connecting to a broker using SSL if additional
+    security is desired."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
+
+
 
 def api_version_is_valid(api_version):
     version_data = api_version.split('.')
@@ -59,6 +93,7 @@ def version_mismatch(error):
 
 
 @app.route('/v2/catalog')
+@requires_auth
 @requires_api_version
 def catalog():
     return jsonify(my_services)
